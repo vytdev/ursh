@@ -89,6 +89,7 @@ int start_server (char *addr, int port)
 {
   struct sockaddr_in in;
   int fd;
+  int opt;
 
   in.sin_family = AF_INET;
   in.sin_port = htons(port);
@@ -102,6 +103,14 @@ int start_server (char *addr, int port)
   fd = socket(in.sin_family, SOCK_STREAM, 0);
   if (fd < 0) {
     log(error, "socket()" err);
+    return -1;
+  }
+
+  log(info, "set socket opts\n");
+  opt = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    log(error, "setsockopt()" err);
+    close(fd);
     return -1;
   }
 
