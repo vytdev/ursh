@@ -131,35 +131,41 @@ int connect_to_std (int fd)
   for (;;) {
     if (poll(fds, sizeof(fds)/sizeof(struct pollfd), -1) < 0) {
       log(error, "poll()" err);
-      break;
+      return -1;
     }
 
     /* from stdin, as the user types */
-    if (fds[0].revents & POLLIN) {
+    if (fds[0].revents & (POLLIN | POLLHUP)) {
       len = read(STDIN_FILENO, buf, sizeof(buf));
+      if (len < 0) {
+        log(error, "read()" err);
+        return -1;
+      }
       if (len == 0) {
         log(warn, "stdin closed\n");
-        break;
+        return -1;
       }
       if (send(fd, buf, len, 0) != len) {
         log(error, "send()" err);
-        break;
+        return -1;
       }
     }
 
     /* from the socket */
-    if (fds[1].revents & POLLIN) {
+    if (fds[1].revents & (POLLIN | POLLHUP)) {
       len = recv(fd, buf, sizeof(buf), 0);
+      if (len < 0) {
+        log(error, "recv()" err);
+        return -1;
+      }
       if (len == 0) {
         log(info, "connection lost\n");
-        break;
+        return 0;
       }
       if (write(STDOUT_FILENO, buf, len) != len) {
         log(error, "write()" err);
-        break;
+        return -1;
       }
     }
   }
-
-  return 0;
 }

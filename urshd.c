@@ -1,14 +1,23 @@
+#define _XOPEN_SOURCE 600
+#define _GNU_SOURCE
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#if defined(__has_include) && __has_include(<pty.h>)
+#  include <pty.h>   /* posix_openpt() */
+#endif
 
 #define log(I, ...) (printf("ursh: " #I ": " __VA_ARGS__))
 #define err         ": %s\n", strerror(errno)
@@ -22,6 +31,9 @@ int handle_clients (int fd);
 /* serve for a client. returns -1 on any error */
 int serve_for_client (int clfd);
 
+/* redirect what fd1 sends to fd2, and fd2 to fd1 */
+int proxy_loop (int fd1, int fd2);
+
 
 static char *ursh_defargs[] = { "/bin/sh", "-i" };
 static char **ursh_argv     = ursh_defargs;
@@ -33,7 +45,7 @@ static int   ursh_port      = 3030;
 void sigchld_handler(int signo) {
   pid_t who;
   while ((who = waitpid(-1, NULL, WNOHANG)) > 0)
-    log(info, "disconnected: %d\n", who);
+    log(info, "exited: pid %d\n", who);
 }
 
 
@@ -141,11 +153,9 @@ int handle_clients (int fd)
 
     /* child */
     if (pid == 0) {
-      log(info, "fork pid: %d\n", getpid());
       close(fd);
       serve_for_client(clfd);
-      close(clfd);
-      _exit(0);
+      /* no return */
     }
 
     /* parent */
@@ -157,13 +167,90 @@ int handle_clients (int fd)
 
 int serve_for_client (int clfd)
 {
-  log(info, "redirecting stdio\n");
-  dup2(clfd, STDIN_FILENO);
-  dup2(clfd, STDOUT_FILENO);
-  dup2(clfd, STDERR_FILENO);
-  log(info, "hello from server!\n");
-  log(info, "handler pid: %d\n", getpid());
-  log(info, "starting shell...\n");
+  int master_fd, slave_fd;
+  char *slave_name;
+  pid_t pid;
 
-  return execvp(ursh_argv[0], ursh_argv);
+  /* master fd is where the socket and the pty communicate. */
+  master_fd = posix_openpt(O_RDWR | O_NOCTTY);
+  grantpt(master_fd);
+  unlockpt(master_fd);
+  slave_name = ptsname(master_fd);
+  slave_fd = open(slave_name, O_RDWR);
+
+  pid = fork();
+  if (pid < 0) {
+    log(error, "fork()" err);
+    close(clfd);
+    close(master_fd);
+    close(slave_fd);
+    _exit(-1);
+  }
+
+  /* parent (for the proxy loop) */
+  if (pid > 0) {
+    log(info, "fork pid: %d (proxy)\n", getpid());
+    close(slave_fd);
+    proxy_loop(clfd, master_fd);
+    close(master_fd);
+    close(clfd);
+    waitpid(pid, NULL, 0);
+    _exit(0);
+  }
+
+  /* child (the shell) */
+  log(info, "fork pid: %d (shell)\n", getpid());
+
+  close(master_fd);
+  close(clfd);
+  setsid();
+  ioctl(slave_fd, TIOCSCTTY, 0);
+
+  log(info, "redirecting stdio\n");
+  dup2(slave_fd, STDIN_FILENO);
+  dup2(slave_fd, STDOUT_FILENO);
+  dup2(slave_fd, STDERR_FILENO);
+  if (slave_fd > STDERR_FILENO)
+    close(slave_fd);
+
+  log(info, "starting shell...\n");
+  log(info, "shell pid: %d\n", getpid());
+
+  execvp(ursh_argv[0], ursh_argv);
+  log(error, "execvp()" err);
+  _exit(-1);
+}
+
+
+int proxy_loop (int fd1, int fd2)
+{
+  ssize_t len;
+  struct pollfd fds[2];
+  char buf[4096];
+
+  fds[0].fd = fd1;
+  fds[0].events = POLLIN;
+  fds[1].fd = fd2;
+  fds[1].events = POLLIN;
+
+  for (;;) {
+    if (poll(fds, sizeof(fds)/sizeof(struct pollfd), -1) < 0) {
+      log(error, "proxy: poll()" err);
+      return -1;
+    }
+
+    if (fds[0].revents & (POLLIN | POLLHUP)) {
+      len = read(fd1, buf, sizeof(buf));
+      if (len <= 0)
+        return 0;
+      write(fd2, buf, len);
+    }
+
+    if (fds[1].revents & (POLLIN | POLLHUP)) {
+      len = read(fd2, buf, sizeof(buf));
+      if (len <= 0)
+        return 0;
+      write(fd1, buf, len);
+    }
+  }
 }
