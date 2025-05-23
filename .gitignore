@@ -1,0 +1,6 @@
+ursh
+urshd
+*.o
+
+*~
+.*.swp
