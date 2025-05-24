@@ -201,12 +201,29 @@ int serve_for_client (int clfd)
 
   /* parent (for the proxy loop) */
   if (pid > 0) {
+
+    /* we wanna handle reaping the shell on ourselves. */
+    struct sigaction sa;
+    sa.sa_handler = SIG_DFL;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGCHLD, &sa, NULL);
+
     log(info, "fork pid: %d (proxy)\n", getpid());
     close(slave_fd);
     proxy_loop(clfd, master_fd);
     close(master_fd);
     close(clfd);
+
+    /*
+     * the shell might still be alive. this can happen when
+     * the client disconnects abruptly, without explicitly
+     * closing the shell themselves.
+     */
+    kill(pid, SIGKILL);
     waitpid(pid, NULL, 0);
+    log(info, "exited: pid %d\n", pid);
+
     _exit(0);
   }
 
