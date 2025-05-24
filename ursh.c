@@ -39,7 +39,14 @@ int main (int argc, char **argv)
   int fd;
 
   if (argc >= 2 && strcmp(argv[1], "help") == 0) {
-    printf("usage: %s [addr] [port]\n", argv[0]);
+    printf("usage: %s [addr] [port]\n"
+           "\n"
+           "URSH:   Userspace Remote Shell client.\n"
+           "GitHub: https://github.com/vytdev/ursh\n"
+           "\n"
+           "Copyright (C) 2025 Vincent Yanzee J. Tan\n"
+           "This program is distributed under the MIT License\n",
+      argv[0]);
     return -1;
   }
 
