@@ -10,11 +10,11 @@ CFLAGS=   -Wall -Wpedantic
 CFLAGS+=  $(MYCFLAGS) -std=$(STD)
 LDFLAGS+= $(MYLDFLAGS)
 
-SRV-SRC= urshd.c
+SRV-SRC= urshd.c common.c
 SRV-OBJ= $(SRV-SRC:.c=.o)
 SRV-TRG= urshd
 
-CLN-SRC= ursh.c
+CLN-SRC= ursh.c common.c
 CLN-OBJ= $(CLN-SRC:.c=.o)
 CLN-TRG= ursh
 

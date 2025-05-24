@@ -15,6 +15,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.h"
+
+
 #if defined(__has_include) && __has_include(<pty.h>)
 #  include <pty.h>   /* posix_openpt() */
 #endif
@@ -252,14 +255,14 @@ int proxy_loop (int fd1, int fd2)
       len = read(fd1, buf, sizeof(buf));
       if (len <= 0)
         return 0;
-      write(fd2, buf, len);
+      write_all(fd2, buf, len);
     }
 
     if (fds[1].revents & (POLLIN | POLLHUP)) {
       len = read(fd2, buf, sizeof(buf));
       if (len <= 0)
         return 0;
-      write(fd1, buf, len);
+      write_all(fd1, buf, len);
     }
   }
 }

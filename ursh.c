@@ -10,6 +10,9 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "common.h"
+
+
 #define log(I, ...) (printf("ursh: " #I ": " __VA_ARGS__))
 #define err         ": %s\n", strerror(errno)
 
@@ -145,25 +148,25 @@ int connect_to_std (int fd)
         log(warn, "stdin closed\n");
         return -1;
       }
-      if (send(fd, buf, len, 0) != len) {
-        log(error, "send()" err);
+      if (write_all(fd, buf, len) != len) {
+        log(error, "write_all()" err);
         return -1;
       }
     }
 
     /* from the socket */
     if (fds[1].revents & (POLLIN | POLLHUP)) {
-      len = recv(fd, buf, sizeof(buf), 0);
+      len = read(fd, buf, sizeof(buf));
       if (len < 0) {
-        log(error, "recv()" err);
+        log(error, "read()" err);
         return -1;
       }
       if (len == 0) {
         log(info, "connection lost\n");
         return 0;
       }
-      if (write(STDOUT_FILENO, buf, len) != len) {
-        log(error, "write()" err);
+      if (write_all(STDOUT_FILENO, buf, len) != len) {
+        log(error, "write_all()" err);
         return -1;
       }
     }
